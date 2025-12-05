@@ -55,3 +55,6 @@ wheels/
 # Virtual environments
 .venv
 
+bangkok_traffy_prep.csv
+bangkok_traffy.csv
+.ipynb_checkpoints
