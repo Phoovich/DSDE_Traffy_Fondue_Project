@@ -2,7 +2,7 @@ from airflow.decorators import dag, task  # type: ignore
 from pendulum import datetime
 
 # import ฟังก์ชันจากไฟล์ jobs/traffy_fetch.py
-from jobs import fetch_traffy_and_save_raw
+from jobs.traffy_fetch import fetch_traffy_and_save_raw
 
 
 @task
