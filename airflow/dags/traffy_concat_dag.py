@@ -1,7 +1,7 @@
 from airflow.sdk import dag, task  # type: ignore
 
 # import ฟังก์ชันจาก jobs/
-from jobs import concat_traffy_raw_to_processed
+from jobs.traffy_concat import concat_traffy_raw_to_processed
 from pendulum import datetime
 
 
