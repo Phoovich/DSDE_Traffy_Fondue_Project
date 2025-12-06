@@ -10,7 +10,7 @@ st.set_page_config(layout="wide")
 # Load and prepare data
 @st.cache_data
 def load_data():
-    data = pd.read_parquet('data_perped.parquet')
+    data = pd.read_parquet('./traffy_ml_base.parquet')
     data['timestamp'] = pd.to_datetime(data['timestamp'], errors='coerce')
     data = data.dropna(subset=['type'])
     data = data.dropna(subset=['district'])
