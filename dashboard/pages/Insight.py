@@ -1,84 +1,179 @@
 import streamlit as st
 import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
-import matplotlib.font_manager as fm
 import numpy as np
+import plotly.express as px
 
-st.set_page_config(layout="wide")
+st.set_page_config(layout="wide", page_title="Traffy Impact Analysis")
 
-# Load and prepare data
+# ---------------------------------------------------------
+# 1. LOAD & PREPARE DATA
+# ---------------------------------------------------------
 @st.cache_data
 def load_data():
-    data = pd.read_parquet('./traffy_ml_base.parquet')
+    # โหลดไฟล์ (ตรวจสอบ path ให้ถูกต้อง)
+    try:
+        data = pd.read_parquet('./traffy_ml_base.parquet')
+    except FileNotFoundError:
+        st.error("ไม่พบไฟล์ 'traffy_ml_base.parquet' กรุณาตรวจสอบตำแหน่งไฟล์")
+        return pd.DataFrame()
+
+    # แปลง timestamp และลบข้อมูลที่ไม่สมบูรณ์
     data['timestamp'] = pd.to_datetime(data['timestamp'], errors='coerce')
-    data = data.dropna(subset=['type'])
-    data = data.dropna(subset=['district'])
-    df2 = data[['timestamp', 'type', 'state', 'district']].copy()
-    df2['type'] = df2['type'].apply(
+    data = data.dropna(subset=['type', 'district'])
+    
+    # เลือกเฉพาะ column ที่จำเป็น
+    df = data[['timestamp', 'type', 'state', 'district']].copy()
+    
+    # แปลง type ที่เป็น string/list ให้เป็น list เสมอ แล้ว Explode (กระจายแถว)
+    # เพื่อให้ 1 แถว มี 1 ปัญหา (เพื่อง่ายต่อการนับคู่ลำดับ)
+    df['type'] = df['type'].apply(
         lambda arr: [str(x).strip() for x in arr] if isinstance(arr, np.ndarray) else []
     )
+    df = df.explode('type')
     
-    df2 = df2.explode('type').reset_index(drop=True)
-    df_sorted = df2.sort_values(['district', 'timestamp'])
-    df_sorted['next_type'] = df_sorted.groupby('district')['type'].shift(-1)
-    df_sorted['next_state'] = df_sorted.groupby('district')['state'].shift(-1)
-    chain = df_sorted[df_sorted['state'].isin(['รอรับเรื่อง', 'กำลังดำเนินการ'])]
-    pattern = chain.groupby(['district', 'type', 'next_type']).size().reset_index(name='count')
-    pattern = pattern.sort_values('count', ascending=False)
-    return pattern
+    # --- CORE LOGIC: Sequential Pattern ---
+    # 1. เรียงตาม เขต -> เวลา (เพื่อให้รู้ว่าอะไรเกิดก่อนเกิดหลังในพื้นที่เดียวกัน)
+    df = df.sort_values(['district', 'timestamp'])
+    
+    # 2. Shift(-1) เพื่อดึง "ประเภทปัญหาถัดไป" ขึ้นมาอยู่บรรทัดเดียวกัน
+    df['next_type'] = df.groupby('district')['type'].shift(-1)
+    
+    # 3. กรองเฉพาะ "ปัญหาต้นทาง" ที่ยังแก้ไขไม่เสร็จ (Unresolved)
+    # สมมติสถานะที่ยังไม่จบคือ: 'รอรับเรื่อง', 'กำลังดำเนินการ'
+    unresolved_states = ['รอรับเรื่อง', 'กำลังดำเนินการ']
+    df_chain = df[df['state'].isin(unresolved_states)].copy()
+    
+    # 4. ลบแถวที่ไม่มีเหตุการณ์ถัดไป (ตัวสุดท้ายของเขต)
+    df_chain = df_chain.dropna(subset=['next_type'])
+    
+    return df_chain
 
-# ---------- Font Thai ----------
-font_path = "/System/Library/Fonts/Supplemental/SukhumvitSet.ttc"  # แก้ path ได้ตามเครื่องคุณ
-font = fm.FontProperties(fname=font_path)
-plt.rcParams['font.family'] = font.get_name()
-plt.rcParams['axes.unicode_minus'] = False
+# โหลดข้อมูล
+df_main = load_data()
 
+# ---------------------------------------------------------
+# 2. SIDEBAR & INTERFACE
+# ---------------------------------------------------------
+st.title("🔎 Sequential Impact Analysis")
+st.markdown("""
+**วิเคราะห์ความต่อเนื่องของปัญหา:** ตารางนี้แสดงความน่าจะเป็นว่า **"หากปัญหา A ยังไม่ถูกแก้ไข (Unresolved) -> มีโอกาสแค่ไหนที่จะเกิดปัญหา B ตามมา"**
+""")
 
-pattern = load_data()
+if not df_main.empty:
+    # Sidebar เลือกเขต
+    all_districts = sorted(df_main['district'].unique())
+    selected_district = st.sidebar.selectbox("📍 เลือกเขต (District)", all_districts)
+    
+    # กรองข้อมูลตามเขตที่เลือก
+    df_district = df_main[df_main['district'] == selected_district]
+    
+    if df_district.empty:
+        st.warning(f"ไม่พบข้อมูลลำดับเหตุการณ์ในเขต {selected_district}")
+    else:
+        # ---------------------------------------------------------
+        # 3. CALCULATION (Pivot & Normalize)
+        # ---------------------------------------------------------
+        # นับจำนวนคู่ (Start Type -> Next Type)
+        pivot_count = pd.crosstab(
+            index=df_district['type'], 
+            columns=df_district['next_type']
+        )
+        
+        # Normalize เป็น % (Row-wise): หารด้วยจำนวนรวมของแถวนั้นๆ
+        # ความหมาย: ถ้าเกิดปัญหาแถว i แล้ว โอกาสเกิดคอลัมน์ j เป็นกี่ %
+        pivot_prob = pivot_count.div(pivot_count.sum(axis=1), axis=0) * 100
 
-# ---------- Sidebar filter ----------
-districts = sorted(pattern['district'].dropna().unique())
-selected_district = st.sidebar.selectbox(
-    "เลือกเขต (district)", 
-    districts
-)
+        # ---------------------------------------------------------
+        # 4. PLOTLY HEATMAP
+        # ---------------------------------------------------------
+        fig = px.imshow(
+            pivot_prob,
+            labels=dict(x="ปัญหาที่ตามมา (Consequence)", y="ปัญหาที่ค้างอยู่ (Unresolved Cause)", color="โอกาสเกิด (%)"),
+            x=pivot_prob.columns,
+            y=pivot_prob.index,
+            color_continuous_scale="Reds",  # สีแดงสื่อถึงความรุนแรง/ความเสี่ยง
+            text_auto='.1f',                # แสดงตัวเลขทศนิยม 1 ตำแหน่งในช่อง
+            aspect="auto",
+            title=f"Impact Heatmap: เขต{selected_district}"
+        )
 
-st.title("Correlation Heatmap ตามเขต")
+        fig.update_layout(
+            height=700,
+            xaxis_title="<b>Next Issue</b> (ปัญหาถัดไปที่แจ้งเข้ามา)",
+            yaxis_title="<b>Current Issue</b> (ปัญหาที่ยังแก้ไม่เสร็จ)",
+            font=dict(size=14)
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
 
-st.write(f"เขตที่เลือก: **{selected_district}**")
+        # ---------------------------------------------------------
+        # 5. DATA TABLE (Top Sequences)
+        # ---------------------------------------------------------
+        col1, col2 = st.columns([1, 1])
+        
+        with col1:
+            st.subheader("📋 Top 10 Most Common Sequences")
+            st.caption("คู่ปัญหาที่พบบ่อยที่สุด (นับตามจำนวนครั้ง)")
+            
+            # จัดกลุ่มนับจำนวน
+            top_counts = df_district.groupby(['type', 'next_type']).size().reset_index(name='count')
+            top_counts = top_counts.sort_values('count', ascending=False).head(10)
+            top_counts.columns = ['Cause (ต้นเหตุ)', 'Effect (ผลที่ตามมา)', 'Count (จำนวนครั้ง)']
+            
+            st.dataframe(top_counts, use_container_width=True, hide_index=True)
 
-# ---------- Filter ตามเขต ----------
-pattern = pattern.dropna()
-df_d = pattern[pattern['district'] == selected_district]
-
-if df_d.empty:
-    st.warning("ไม่มีข้อมูลในเขตนี้")
 else:
-    # Pivot: type → next_type matrix
-    pivot = df_d.pivot_table(
-        index='type',
-        columns='next_type',
-        values='count',
-        fill_value=0
+    st.info("กรุณารอโหลดข้อมูล หรือตรวจสอบไฟล์ข้อมูล...")
+st.markdown("---") # เส้นคั่นสวยๆ
+
+# ---------------------------------------------------------
+# 6. ADDITIONAL GRAPH: Statistical Correlation (Ignore State)
+# ---------------------------------------------------------
+st.header("🔗 Statistical Correlation Matrix")
+st.markdown("""
+**ความสัมพันธ์เชิงสถิติ:** กราฟนี้วิเคราะห์ข้อมูลรายวันโดย **ไม่สนสถานะ (State)** ว่าแก้หรือยัง
+* **สีน้ำเงินเข้ม (เข้าใกล้ 1):** ปัญหามักจะ **เกิดพร้อมกัน** หรือมาในช่วงเวลาเดียวกัน
+* **สีแดง/ขาว (เข้าใกล้ 0 หรือติดลบ):** ไม่มีความสัมพันธ์กัน หรือมักจะไม่เกิดพร้อมกัน
+""")
+
+if not df_district.empty:
+    # 1. เตรียมข้อมูล: เปลี่ยนเป็น Time Series รายวัน
+    # เราต้องนับว่า "ในแต่ละวัน มีปัญหาแต่ละประเภทกี่เรื่อง"
+    df_district['date'] = df_district['timestamp'].dt.date
+    
+    # Crosstab: แถว=วันที่, คอลัมน์=ประเภทปัญหา, ค่า=จำนวนเรื่อง
+    daily_counts = pd.crosstab(df_district['date'], df_district['type'])
+
+    # 2. คำนวณ Correlation (Pearson)
+    # ดูว่ากราฟเส้นของปัญหาแต่ละคู่ วิ่งไปทิศทางเดียวกันไหม
+    corr_matrix = daily_counts.corr(method='pearson')
+
+    # 3. สร้าง Heatmap
+    # จัดการค่า NaN (กรณี type นั้นมีข้อมูลเดียวคำนวณ corr ไม่ได้)
+    corr_matrix = corr_matrix.fillna(0)
+
+    fig_corr = px.imshow(
+        corr_matrix,
+        labels=dict(x="Problem Type A", y="Problem Type B", color="Correlation"),
+        x=corr_matrix.columns,
+        y=corr_matrix.index,
+        color_continuous_scale="RdBu", # แดง-ขาว-น้ำเงิน (มาตรฐาน Correlation)
+        zmin=-1, zmax=1,               # บังคับสเกลให้อยู่ช่วง -1 ถึง 1
+        aspect="auto",
+        title=f"Correlation Matrix: เขต{selected_district}"
     )
 
-    # Normalize rows
-    pivot_norm = pivot.div(pivot.sum(axis=1), axis=0)
+    fig_corr.update_layout(
+        height=700,
+        xaxis_title="",
+        yaxis_title="",
+    )
 
-    # วาดกราฟ
-    fig, ax = plt.subplots(figsize=(8, 3))
-    sns.heatmap(pivot_norm, cmap="Blues", annot=False, ax=ax)
-    ax.set_title(f"Correlation Heatmap — District: {selected_district}", fontsize=16)
-    ax.set_xlabel("Next Type")
-    ax.set_ylabel("Type (Unresolved)")
-    plt.xticks(rotation=45, ha="right")
+    st.plotly_chart(fig_corr, use_container_width=True)
+    
+    # (Optional) คำอธิบายเพิ่มเติม
+    st.info(f"💡 **Tip:** ข้อมูลนี้คำนวณจากจำนวนเรื่องร้องเรียนรายวันของเขต **{selected_district}** "
+            "ถ้าคู่ไหนเป็นสีน้ำเงินเข้ม แปลว่าช่วงไหนที่มีเรื่องหนึ่งแจ้งเข้ามา อีกเรื่องมักจะแจ้งเข้ามาเยอะด้วยเหมือนกัน")
 
-    st.pyplot(fig)
-
-    with st.expander("View Top10 Consequence Type", expanded=False):
-        st.subheader('Top 10 Consequence')
-        top_density = pattern.nlargest(10, 'count')[
-            ['district', 'type', 'next_type', 'count']
-        ].reset_index(drop=True)
-        st.dataframe(top_density, use_container_width=True)
+else:
+    st.write("ไม่มีข้อมูลเพียงพอสำหรับคำนวณ Correlation")
