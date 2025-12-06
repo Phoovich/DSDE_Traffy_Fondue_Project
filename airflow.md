@@ -5,7 +5,7 @@ uv sync
 ```
 
 ```bash
-mv airflow.md ~/airflow/
+cp -r airflow ~/
 ```
 
 ```bash
@@ -15,3 +15,10 @@ source .venv/bin/activate
 ```bash
 uv run airflow standalone
 ```
+
+## run streamlit
+
+```bash
+uv run streamlit run dashboard/app.py
+```
+
