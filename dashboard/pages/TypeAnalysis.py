@@ -3,7 +3,6 @@ import pandas as pd
 import joblib
 import re
 import matplotlib.pyplot as plt
-from pathlib import Path
 from sklearn.metrics import classification_report, confusion_matrix
 import plotly.express as px
 
@@ -18,8 +17,6 @@ from pythainlp.corpus import thai_stopwords
 # ตั้งค่าฟอนต์ภาษาไทยสำหรับ Mac
 plt.rcParams['font.family'] = 'Thonburi'
 
-# Path (แก้ไขให้ตรงกับเครื่องคุณ)
-DATA_DIR = Path("/Users/phoovich/airflow/data")
 MODEL_PATH = "best_model.pkl"
 TRAIN_DATA_PATH = "train_data.pkl"
 
@@ -141,7 +138,26 @@ if st.session_state['run_eval']:
             tab1, tab2, tab3, tab4, tab5 = st.tabs(["📋 Report", "🔲 Confusion Matrix", "🔍 Prediction Check", "🔑 Keywords", "📊 Label Distribution"])            
             # --- TAB 1: Report ---
             with tab1:
-                report = classification_report(y_test, y_pred, target_names=mlb.classes_, output_dict=True, zero_division=0)
+                # 1. หา Index ของ Class ที่ไม่ใช่ 'nan'
+                valid_indices = [i for i, c in enumerate(mlb.classes_) if str(c) != 'nan']
+                
+                # 2. สร้าง List ชื่อ Class ใหม่ที่ไม่มี nan
+                clean_classes = [mlb.classes_[i] for i in valid_indices]
+                
+                # 3. ตัดคอลัมน์ข้อมูลที่เป็น nan ทิ้งไป (Slicing)
+                # y_test และ y_pred ต้องเป็น numpy array (ซึ่งปกติมาจาก model มันเป็นอยู่แล้ว)
+                y_test_clean = y_test[:, valid_indices]
+                y_pred_clean = y_pred[:, valid_indices]
+                
+                # 4. ส่งเข้า classification_report (ตอนนี้จำนวนคอลัมน์กับชื่อจะเท่ากันแล้ว)
+                report = classification_report(
+                    y_test_clean, 
+                    y_pred_clean, 
+                    target_names=clean_classes, 
+                    output_dict=True, 
+                    zero_division=0
+                )
+                
                 df_report = pd.DataFrame(report).transpose()
                 st.dataframe(df_report.style.background_gradient(cmap='Greens', subset=['f1-score']))
 
@@ -151,7 +167,8 @@ if st.session_state['run_eval']:
                 
                 with col1:
                     st.markdown("#### Select Class")
-                    sel_class = st.selectbox("เลือก Class ที่ต้องการดู:", mlb.classes_)
+                    clean_classes = [c for c in mlb.classes_ if str(c) != 'nan']
+                    sel_class = st.selectbox("เลือก Class ที่ต้องการดู:", clean_classes)
                     
                 with col2:
                     # 1. Calculate Confusion Matrix
@@ -209,7 +226,9 @@ if st.session_state['run_eval']:
                     feat_names = tfidf.get_feature_names_out()
                     
                     # 2. Select Class
-                    target_cls = st.selectbox("เลือก Class เพื่อดู Keywords:", mlb.classes_, key='fi_select')
+
+                    clean_classes = [c for c in mlb.classes_ if str(c) != 'nan']
+                    target_cls = st.selectbox("เลือก Class เพื่อดู Keywords:", clean_classes, key='fi_select')
                     cls_idx = list(mlb.classes_).index(target_cls)
                     
                     # 3. Get Weights from Model

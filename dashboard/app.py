@@ -18,7 +18,7 @@ st.set_page_config(layout="wide", page_title="Traffy Fondue Dashboard")
 @st.cache_data
 def load_data():
     try:
-        df = pd.read_parquet('./data_perped.parquet')
+        df = pd.read_parquet('./traffy_ml_base.parquet')
     except Exception as e:
         st.error(f"Could not read file: {e}")
         return pd.DataFrame()
