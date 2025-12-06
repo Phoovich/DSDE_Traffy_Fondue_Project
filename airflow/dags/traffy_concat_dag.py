@@ -11,8 +11,8 @@ def concat_task():
 
 
 @dag(
-    dag_id="traffy_concat_every_30min",
-    schedule="*/30 * * * *",  # ← ทุก 30 นาที
+    dag_id="traffy_concat_daily_1am",
+    schedule="0 1 * * *",
     start_date=datetime(2025, 1, 1, tz="UTC"),
     catchup=False,
     tags=["traffy", "concat"],
