@@ -54,15 +54,8 @@ def prepare_data_task(sample_size=None):
     df = pd.read_parquet(input_path)
 
     df = df.dropna(subset=['type'])
-    def ensure_list(x):
-        if isinstance(x, str):
-            return [x]  # เปลี่ยน "น้ำท่วม" -> ["น้ำท่วม"]
-        elif isinstance(x, list):
-            # กรองค่า None หรือ 'nan' ที่อาจแฝงอยู่ใน List
-            return [i for i in x if i is not None and str(i) != 'nan']
-        return []
+    df = df.dropna(subset=['comment'])
 
-    df['type'] = df['type'].apply(ensure_list)
     # 1.3 ลบแถวที่หลังจากกรองแล้วกลายเป็น List ว่าง []
     df = df[df['type'].map(len) > 0]
 
