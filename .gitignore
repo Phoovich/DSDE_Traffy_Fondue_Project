@@ -66,10 +66,17 @@ unittests.db
 logs/
 plugins/__pycache__/
 
+airflow/data/
+*.csv
+*.parquet
+*.json
 *.pid
 *.log
 *.out
 *.err
+*.csv
+*.parquet
+
 
 data/
 !data/.gitkeep

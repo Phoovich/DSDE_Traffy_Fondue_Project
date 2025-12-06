@@ -76,6 +76,27 @@ def clean_traffy(df: pd.DataFrame) -> pd.DataFrame:
         print("WARNING: no 'type' column found, skip parse_brace_list")
 
     print(f"cleaned shape: {df.shape}")
+
+        # ---------- 4) Normalize province ----------
+    if "province" in df.columns:
+        print("Normalizing province column...")
+
+        province_map = {
+            'จังหวัดกรุงเทพมหานคร': 'กรุงเทพมหานคร',
+            'จังหวัดจังหวัด กรุงเทพมหานคร': 'กรุงเทพมหานคร',
+            'จังหวัดBangkok': 'กรุงเทพมหานคร',
+            'จังหวัดกรุงเทพฯ': 'กรุงเทพมหานคร'
+        }
+
+        df["province"] = df["province"].replace(province_map)
+
+        # Keep only rows within Bangkok
+        df = df.loc[df["province"] == "กรุงเทพมหานคร"]
+
+        print("Province normalized. Unique values:", df["province"].unique())
+    else:
+        print("WARNING: province column not found. Skip normalization.")
+
     return df
 
 
