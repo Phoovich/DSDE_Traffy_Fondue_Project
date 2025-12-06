@@ -26,8 +26,8 @@ def concat_traffy_raw_to_processed():
 
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
-    output_path = PROCESSED_DIR / "traffy_bronze_all.parquet"
-    df_all.to_parquet(output_path, index=False)
+    output_path = PROCESSED_DIR / "traffy_bronze_all.csv"
+    df_all.to_csv(output_path, index=False)
 
     print(f"Saved processed data to: {output_path}")
     return str(output_path)
